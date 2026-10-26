@@ -1,0 +1,25 @@
+# GUI build and deployment outputs
+/build/
+/dist/
+/out/
+
+# OpenFOAM reference source: read-only input, not part of the GUI repository
+/OpenFOAM-v2206/
+
+# IDE and local user state
+/.vs/
+/.vscode/
+/.idea/
+*.user
+*.user.*
+*.suo
+
+# CMake generated or local-only files
+/CMakeUserPresets.json
+/CMakeFiles/
+/CMakeCache.txt
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak

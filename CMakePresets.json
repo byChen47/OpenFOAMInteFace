@@ -1,0 +1,70 @@
+{
+    "version":  6,
+    "cmakeMinimumRequired":  {
+                                 "major":  3,
+                                 "minor":  24,
+                                 "patch":  0
+                             },
+    "configurePresets":  [
+                             {
+                                 "name":  "windows-mingw-debug",
+                                 "displayName":  "Windows MinGW Debug",
+                                 "description":  "Qt 6.11.2, VTK 9.6.2, MinGW and Ninja debug build",
+                                 "generator":  "Ninja",
+                                 "binaryDir":  "${sourceDir}/build/windows-mingw-debug",
+                                 "cacheVariables":  {
+                                                        "CMAKE_BUILD_TYPE":  "Debug",
+                                                        "CMAKE_CXX_COMPILER":  "D:/3.wpsAndOther/Qt/setting/Tools/mingw1310_64/bin/g++.exe",
+                                                        "CMAKE_MAKE_PROGRAM":  "D:/3.wpsAndOther/Qt/setting/Tools/Ninja/ninja.exe",
+                                                        "CMAKE_PREFIX_PATH":  "D:/3.wpsAndOther/Qt/setting/6.11.2/mingw_64;D:/3.wpsAndOther/VTK/install",
+                                                        "CMAKE_EXPORT_COMPILE_COMMANDS":  true
+                                                    }
+                             },
+                             {
+                                 "name":  "windows-mingw-release",
+                                 "displayName":  "Windows MinGW Release",
+                                 "description":  "Qt 6.11.2, VTK 9.6.2, MinGW and Ninja release build",
+                                 "generator":  "Ninja",
+                                 "binaryDir":  "${sourceDir}/build/windows-mingw-release",
+                                 "cacheVariables":  {
+                                                        "CMAKE_BUILD_TYPE":  "Release",
+                                                        "CMAKE_CXX_COMPILER":  "D:/3.wpsAndOther/Qt/setting/Tools/mingw1310_64/bin/g++.exe",
+                                                        "CMAKE_MAKE_PROGRAM":  "D:/3.wpsAndOther/Qt/setting/Tools/Ninja/ninja.exe",
+                                                        "CMAKE_PREFIX_PATH":  "D:/3.wpsAndOther/Qt/setting/6.11.2/mingw_64;D:/3.wpsAndOther/VTK/install",
+                                                        "CMAKE_EXPORT_COMPILE_COMMANDS":  true
+                                                    }
+                             }
+                         ],
+    "buildPresets":  [
+                         {
+                             "name":  "windows-mingw-debug",
+                             "configurePreset":  "windows-mingw-debug"
+                         },
+                         {
+                             "name":  "windows-mingw-release",
+                             "configurePreset":  "windows-mingw-release"
+                         }
+                     ],
+    "testPresets":  [
+                        {
+                            "name":  "windows-mingw-debug",
+                            "configurePreset":  "windows-mingw-debug",
+                            "output":  {
+                                           "outputOnFailure":  true
+                                       },
+                            "environment":  {
+                                                "PATH":  "D:/3.wpsAndOther/Qt/setting/6.11.2/mingw_64/bin;D:/3.wpsAndOther/Qt/setting/Tools/mingw1310_64/bin;D:/3.wpsAndOther/VTK/install/bin;$penv{PATH}"
+                                            }
+                        },
+                        {
+                            "name":  "windows-mingw-release",
+                            "configurePreset":  "windows-mingw-release",
+                            "output":  {
+                                           "outputOnFailure":  true
+                                       },
+                            "environment":  {
+                                                "PATH":  "D:/3.wpsAndOther/Qt/setting/6.11.2/mingw_64/bin;D:/3.wpsAndOther/Qt/setting/Tools/mingw1310_64/bin;D:/3.wpsAndOther/VTK/install/bin;$penv{PATH}"
+                                            }
+                        }
+                    ]
+}
