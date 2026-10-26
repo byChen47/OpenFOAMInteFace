@@ -120,6 +120,38 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Commit-Update
 - 配置远程仓库后，可增加 `-Push` 同时推送归档分支和 `main`。
 - `OpenFOAM-v2206/` 是本地只读参考，不进入 Git。
 - 详细规则见 `docs/GIT_WORKFLOW.md`。
+## 5.2 GitHub 发布触发词
+
+当用户只发送以下任意表达时：
+
+- `提交到github`
+- `提交到 GitHub`
+- `上传到github`
+- `上传到 GitHub`
+- `发布到github`
+- `发布到 GitHub`
+
+Agent 必须将其视为立即执行 GitHub 发布流程，不再询问分支、提交信息或推送步骤。
+
+自动执行规则：
+
+1. 检查当前分支为 `main`，工作区存在待提交修改。
+2. 如本次任务修改了代码，先完成构建和测试。
+3. 根据实际修改自动生成清晰的提交信息。
+4. 运行 `scripts/Publish-ToGitHub.ps1 -Message '<自动生成的提交信息>'`。
+5. 验证远程 `main` 与本地 `main` 的提交一致。
+6. 验证本次归档分支已推送到远程。
+7. 向用户报告提交 SHA 和归档分支名。
+
+只有以下情况需要停下来询问：
+
+- 没有可提交的修改。
+- Git 认证失败。
+- 远程仓库不存在或无法访问。
+- 远程 `main` 已分叉，不能快进推送。
+- 合并冲突或工作区状态不安全。
+
+禁止强制推送 `main`，禁止跳过归档直接推送。
 ## 6. 标准构建与测试命令
 
 以下命令在 M0 建立 CMake 工程后生效。
@@ -153,6 +185,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Build-Project
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Build-Project.ps1' -Configuration Release
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Run-Application.ps1' -Configuration Debug
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Deploy-Release.ps1' -BuildFirst
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Publish-ToGitHub.ps1' -Message 'chore: publish update'
 ```
 
 构建、部署和 DLL 收集细节见 `docs/BUILD_AND_DEPLOY.md`。
@@ -256,6 +289,8 @@ Agent 开始任务前必须：
 - 已完成：M0-01、M0-02、M0-03、M0-04。
 - 当前任务：准备进入 M1 工程模型与持久化。
 - Git 分支策略：旧 `main` 自动归档，新提交进入 `main`。
+- GitHub 触发词：`提交到github` 即自动归档、提交并推送。
+- 远程仓库：`https://github.com/byChen47/OpenFOAMInteFace.git`。
 - Git 更新规则：见 `docs/GIT_WORKFLOW.md`。
 - 构建和部署脚本位于 `scripts/`。
 - 构建与部署说明：见 `docs/BUILD_AND_DEPLOY.md`。

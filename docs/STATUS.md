@@ -54,6 +54,7 @@
 - `archive/<时间>-<旧main短SHA>`：每次更新前的旧版本。
 - 归档分支只读。
 - 每次更新运行 `scripts\Commit-Update.ps1`。
+- 固定触发词 `提交到github` 会自动执行归档、提交、推送和远程校验。
 
 ## 构建与部署结果
 
@@ -73,6 +74,7 @@
 - VTK：`9.6.2`
 - Ninja：`1.12.1`
 - Git：`2.55.0.windows.3`
+- GitHub：`https://github.com/byChen47/OpenFOAMInteFace.git`
 
 ## 下一步
 
@@ -87,10 +89,10 @@
 
 - Vulkan headers 未安装，但当前不使用 Vulkan。
 - windeployqt 提示缺少 DXC DLL，但当前不使用 Direct3D 12。
-- Git 远程仓库：`https://github.com/byChen47/OpenFOAMInteFace.git`。
 
 ## 最近变更
 
 - 2026-10-26：初始化 Git 仓库并建立 M0 基线。
 - 2026-10-26：建立旧 main 归档分支和最新 main 更新流程。
 - 2026-10-26：配置 GitHub origin 并首次推送 main。
+- 2026-10-26：新增“提交到github”自动发布规则和一键发布脚本。

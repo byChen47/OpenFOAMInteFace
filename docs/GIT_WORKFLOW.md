@@ -1,5 +1,33 @@
 # Git 分支与更新流程
 
+## 0. 固定触发词
+
+以后只需对 Agent 说：
+
+```text
+提交到github
+```
+
+等同于：
+
+1. 检查并验证当前修改。
+2. 自动生成提交信息。
+3. 归档旧 `main`。
+4. 将新修改提交到 `main`。
+5. 推送归档分支和最新 `main`。
+6. 验证远程分支与本地提交一致。
+
+该规则已写入 `AGENTS.md`，后续 Agent 不需要再次询问提交或推送步骤。
+
+一键脚本：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File '.\scripts\Publish-ToGitHub.ps1' `
+  -Message 'chore: publish update'
+```
+
+如果不提供 `-Message`，脚本会自动生成带时间戳的提交信息。
 ## 1. 分支规则
 
 - `main`：始终指向最新版本。
@@ -44,10 +72,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 
 ## 4. 同时推送到远程仓库
 
-首次添加远程仓库：
+当前远程仓库已配置为 `origin`：
 
-```powershell
-git remote add origin <repository-url>
+```text
+https://github.com/byChen47/OpenFOAMInteFace.git
 ```
 
 提交更新并推送 `main` 和旧版本分支：
@@ -59,7 +87,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -Push
 ```
 
-脚本会先推送归档分支，再推送 `main`。
+脚本会先推送归档分支，再推送 `main`。日常更新优先使用 `Publish-ToGitHub.ps1`。
 
 ## 5. 只创建归档分支，不提交更新
 
