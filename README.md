@@ -61,4 +61,5 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Publish-ToGit
 部署目录：`dist\OpenFOAMGUI\`
 
 完整的 PATH、手动 CMake 命令、DLL 收集和故障排查见 [构建与部署说明](docs/BUILD_AND_DEPLOY.md)。
+
 以后只需对 Agent 说 **“提交到github”**，即可自动执行归档、提交和推送。详细规则见 [Git 分支与更新流程](docs/GIT_WORKFLOW.md)。

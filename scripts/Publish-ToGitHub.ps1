@@ -31,29 +31,55 @@ if ([string]::IsNullOrWhiteSpace($Message))
     $Message = "chore: publish update $timestamp"
 }
 
+$previousMain = (& git rev-parse HEAD).Trim()
+$archivesBefore = @(& git for-each-ref --format='%(refname:short)' --points-at $previousMain 'refs/heads/archive/*')
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Unable to inspect archive branches before publishing.'
+}
+
 $commitScript = Join-Path $PSScriptRoot 'Commit-Update.ps1'
-$archiveBranch = (& $commitScript -Message $Message -Push -Remote $Remote).Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($archiveBranch))
+& $commitScript -Message $Message -Push -Remote $Remote
+if ($LASTEXITCODE -ne 0)
 {
     throw 'Publishing failed while archiving and committing the update.'
 }
 
 $localMain = (& git rev-parse HEAD).Trim()
+$archivesAfter = @(& git for-each-ref --format='%(refname:short)' --points-at $previousMain 'refs/heads/archive/*')
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Unable to inspect archive branches after publishing.'
+}
+
+$newArchives = @($archivesAfter | Where-Object { $archivesBefore -notcontains $_ })
+if ($newArchives.Count -ne 1)
+{
+    throw "Expected one new archive branch, found $($newArchives.Count)."
+}
+
+$archiveBranch = $newArchives[0]
 $remoteHeads = @(& git ls-remote --heads $Remote)
 if ($LASTEXITCODE -ne 0)
 {
-    throw "Unable to verify remote '$Remote' after publishing."
+    throw "Unable to inspect remote '$Remote' after publishing."
 }
 
-$mainLine = $remoteHeads | Where-Object { $_ -match "refs/heads/main$" } | Select-Object -First 1
-$archiveLine = $remoteHeads | Where-Object { $_ -match [regex]::Escape("refs/heads/$archiveBranch") } | Select-Object -First 1
+$mainLine = @($remoteHeads | Where-Object { $_.EndsWith('refs/heads/main') } | Select-Object -First 1)
+if ($mainLine.Count -eq 0)
+{
+    throw 'Remote main was not found after publishing.'
+}
 
-if ($null -eq $mainLine -or -not $mainLine.StartsWith($localMain))
+$remoteMain = ($mainLine[0] -split '\s+')[0]
+if ($remoteMain -ne $localMain)
 {
     throw 'Remote main does not match the local main commit after publishing.'
 }
 
-if ($null -eq $archiveLine)
+$archiveRef = "refs/heads/$archiveBranch"
+$archiveLine = @($remoteHeads | Where-Object { $_.EndsWith($archiveRef) } | Select-Object -First 1)
+if ($archiveLine.Count -eq 0)
 {
     throw "Remote archive branch '$archiveBranch' was not found after publishing."
 }
