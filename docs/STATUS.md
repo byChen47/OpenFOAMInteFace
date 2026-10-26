@@ -87,9 +87,10 @@
 
 - Vulkan headers 未安装，但当前不使用 Vulkan。
 - windeployqt 提示缺少 DXC DLL，但当前不使用 Direct3D 12。
-- 尚未配置 Git 远程仓库。
+- Git 远程仓库：`https://github.com/byChen47/OpenFOAMInteFace.git`。
 
 ## 最近变更
 
 - 2026-10-26：初始化 Git 仓库并建立 M0 基线。
 - 2026-10-26：建立旧 main 归档分支和最新 main 更新流程。
+- 2026-10-26：配置 GitHub origin 并首次推送 main。

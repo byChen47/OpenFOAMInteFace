@@ -95,4 +95,10 @@ git switch -c fix/from-archive <archive-branch>
 
 ## 8. 当前远程状态
 
-当前仓库未配置远程地址。本地初始化和提交不受影响；需要上传时先添加 `origin`。
+远程仓库已配置为：
+
+```text
+https://github.com/byChen47/OpenFOAMInteFace.git
+```
+
+本地分支 `main` 已跟踪 `origin/main`。
