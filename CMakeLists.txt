@@ -31,7 +31,14 @@ find_package(VTK 9.3 REQUIRED COMPONENTS
     GUISupportQt
 )
 
+# Module boundaries: each module owns its CMakeLists (sources, warnings, tests).
+# ofgui_core is the pure C++20 model layer; ofgui_io builds on it with Qt6::Core.
+add_subdirectory(src/core)
+add_subdirectory(src/io)
+
 add_library(ofgui_render STATIC
+    src/render/DomainBoundsAdapter.cpp
+    src/render/DomainBoundsAdapter.h
     src/render/DomainSceneBuilder.cpp
     src/render/DomainSceneBuilder.h
     src/render/DomainSceneActors.h
@@ -61,6 +68,7 @@ target_include_directories(ofgui_render
 
 target_link_libraries(ofgui_render
     PUBLIC
+        ofgui_core
         Qt6::Widgets
         ${VTK_LIBRARIES}
 )
@@ -68,19 +76,74 @@ target_link_libraries(ofgui_render
 add_library(ofgui_ui STATIC
     src/ui/ApplicationStyle.cpp
     src/ui/ApplicationStyle.h
+    src/ui/CaseDocumentController.cpp
+    src/ui/CaseDocumentController.h
+    src/ui/CaseDocumentControllerDictionaries.cpp
+    src/ui/CaseDocumentControllerImport.cpp
+    src/ui/CaseDocumentControllerPaths.h
+    src/ui/CaseDocumentControllerPersistence.cpp
     src/ui/ConfigurationPanel.cpp
     src/ui/ConfigurationPanel.h
+    src/ui/DomainEditor.cpp
+    src/ui/DomainEditor.h
+    src/ui/DefaultCaseTemplate.cpp
+    src/ui/DefaultCaseTemplate.h
+    src/ui/ExportController.cpp
+    src/ui/ExportController.h
+    src/ui/ExportDictionaryCheck.cpp
+    src/ui/ExportDictionaryCheck.h
+    src/ui/ExportPreviewDialog.cpp
+    src/ui/ExportPreviewDialog.h
+    src/ui/ExportPreviewDialogPreview.cpp
+    src/ui/ExportPreviewPanel.cpp
+    src/ui/ExportPreviewPanel.h
+    src/ui/FieldBoundaryTable.cpp
+    src/ui/FieldBoundaryTable.h
+    src/ui/FieldBoundaryTableRows.cpp
+    src/ui/FieldBoundaryTableTypeRules.cpp
+    src/ui/FieldEditor.cpp
+    src/ui/FieldEditor.h
+    src/ui/FieldEditorFields.cpp
+    src/ui/FieldEditorGroups.cpp
     src/ui/InspectorPanel.cpp
     src/ui/InspectorPanel.h
     src/ui/MainWindow.cpp
     src/ui/MainWindow.h
-    src/ui/ProjectTreeWidget.cpp
-    src/ui/ProjectTreeWidget.h
+    src/ui/MainWindowActions.cpp
+    src/ui/MainWindowDocumentActions.cpp
+    src/ui/MainWindowExportActions.cpp
+    src/ui/NodeDetailBoundaryDetail.cpp
+    src/ui/NodeDetailFormatter.cpp
+    src/ui/NodeDetailFormatter.h
+    src/ui/NodeDetailHtml.cpp
+    src/ui/NodeDetailHtml.h
+    src/ui/NodeDetailSections.h
+    src/ui/ProjectNodeRef.h
+    src/ui/ProjectTreeLabels.cpp
+    src/ui/ProjectTreeLabels.h
+    src/ui/ProjectTreeModel.cpp
+    src/ui/ProjectTreeModel.h
+    src/ui/ProjectTreeView.cpp
+    src/ui/ProjectTreeView.h
+    src/ui/SolverEditor.cpp
+    src/ui/SolverEditor.h
+    src/ui/SolverEditorAccessors.cpp
+    src/ui/SolverEditorPaths.h
+    src/ui/SolverEditorRefresh.cpp
+    src/ui/SolverEditorWrites.cpp
+    src/ui/UniformValueEditor.cpp
+    src/ui/UniformValueEditor.h
+    src/ui/UniformValueText.h
+    src/ui/ValidationNavigator.cpp
+    src/ui/ValidationNavigator.h
+    src/ui/ValidationPanel.cpp
+    src/ui/ValidationPanel.h
 )
 
 target_link_libraries(ofgui_ui
     PUBLIC
         ofgui_render
+        ofgui_io
         Qt6::Widgets
 )
 
@@ -106,34 +169,190 @@ vtk_module_autoinit(
 if(BUILD_TESTING)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
 
-    add_executable(ofgui_scene_tests
+    add_executable(ofgui_render_scene_tests
         tests/render/DomainSceneBuilderTest.cpp
     )
 
-    target_link_libraries(ofgui_scene_tests
+    target_link_libraries(ofgui_render_scene_tests
         PRIVATE
             ofgui_render
             Qt6::Test
     )
 
     vtk_module_autoinit(
-        TARGETS ofgui_scene_tests
+        TARGETS ofgui_render_scene_tests
         MODULES ${VTK_LIBRARIES}
     )
 
     add_test(
-        NAME ofgui_scene_tests
-        COMMAND ofgui_scene_tests
+        NAME ofgui_render_scene_tests
+        COMMAND ofgui_render_scene_tests
+    )
+
+    add_executable(ofgui_render_domain_tests
+        tests/render/DomainBoundsAdapterTest.cpp
+    )
+
+    target_link_libraries(ofgui_render_domain_tests
+        PRIVATE
+            ofgui_render
+            Qt6::Test
+    )
+
+    vtk_module_autoinit(
+        TARGETS ofgui_render_domain_tests
+        MODULES ${VTK_LIBRARIES}
+    )
+
+    add_test(
+        NAME ofgui_render_domain_tests
+        COMMAND ofgui_render_domain_tests
+    )
+
+    add_executable(ofgui_ui_domain_tests
+        tests/ui/DomainEditorTest.cpp
+    )
+
+    target_link_libraries(ofgui_ui_domain_tests
+        PRIVATE
+            ofgui_ui
+            Qt6::Test
+    )
+
+    target_compile_definitions(ofgui_ui_domain_tests
+        PRIVATE
+            OFGUI_FOAM_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/OpenFOAM-v2206"
+    )
+
+    vtk_module_autoinit(
+        TARGETS ofgui_ui_domain_tests
+        MODULES ${VTK_LIBRARIES}
+    )
+
+    add_test(
+        NAME ofgui_ui_domain_tests
+        COMMAND ofgui_ui_domain_tests
+    )
+
+    add_executable(ofgui_ui_field_tests
+        tests/ui/FieldEditorTest.cpp
+    )
+
+    target_link_libraries(ofgui_ui_field_tests
+        PRIVATE
+            ofgui_ui
+            Qt6::Test
+    )
+
+    target_compile_definitions(ofgui_ui_field_tests
+        PRIVATE
+            OFGUI_FOAM_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/OpenFOAM-v2206"
+    )
+
+    vtk_module_autoinit(
+        TARGETS ofgui_ui_field_tests
+        MODULES ${VTK_LIBRARIES}
+    )
+
+    add_test(
+        NAME ofgui_ui_field_tests
+        COMMAND ofgui_ui_field_tests
+    )
+
+    add_executable(ofgui_ui_smoke_tests
+        tests/ui/CaseDocumentTreeTest.cpp
+    )
+    target_link_libraries(ofgui_ui_smoke_tests
+        PRIVATE
+            ofgui_ui
+            Qt6::Test
+    )
+
+    target_compile_definitions(ofgui_ui_smoke_tests
+        PRIVATE
+            OFGUI_FOAM_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/OpenFOAM-v2206"
+    )
+
+    vtk_module_autoinit(
+        TARGETS ofgui_ui_smoke_tests
+        MODULES ${VTK_LIBRARIES}
+    )
+
+    add_test(
+        NAME ofgui_ui_smoke_tests
+        COMMAND ofgui_ui_smoke_tests
+    )
+
+    add_executable(ofgui_ui_solver_tests
+        tests/ui/SolverEditorTest.cpp
+    )
+
+    target_link_libraries(ofgui_ui_solver_tests
+        PRIVATE
+            ofgui_ui
+            Qt6::Test
+    )
+
+    target_compile_definitions(ofgui_ui_solver_tests
+        PRIVATE
+            OFGUI_FOAM_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/OpenFOAM-v2206"
+    )
+
+    vtk_module_autoinit(
+        TARGETS ofgui_ui_solver_tests
+        MODULES ${VTK_LIBRARIES}
+    )
+
+    add_test(
+        NAME ofgui_ui_solver_tests
+        COMMAND ofgui_ui_solver_tests
+    )
+
+    add_executable(ofgui_ui_workflow_tests
+        tests/ui/ExportWorkflowTest.cpp
+    )
+
+    target_link_libraries(ofgui_ui_workflow_tests
+        PRIVATE
+            ofgui_ui
+            Qt6::Test
+    )
+
+    target_compile_definitions(ofgui_ui_workflow_tests
+        PRIVATE
+            OFGUI_FOAM_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/OpenFOAM-v2206"
+    )
+
+    vtk_module_autoinit(
+        TARGETS ofgui_ui_workflow_tests
+        MODULES ${VTK_LIBRARIES}
+    )
+
+    add_test(
+        NAME ofgui_ui_workflow_tests
+        COMMAND ofgui_ui_workflow_tests
     )
 endif()
 
 if(MSVC)
     target_compile_options(ofgui_render PRIVATE /W4 /permissive-)
     target_compile_options(ofgui_ui PRIVATE /W4 /permissive-)
+    target_compile_options(ofgui_render_domain_tests PRIVATE /W4 /permissive-)
+    target_compile_options(ofgui_ui_domain_tests PRIVATE /W4 /permissive-)
+    target_compile_options(ofgui_ui_field_tests PRIVATE /W4 /permissive-)
+    target_compile_options(ofgui_ui_smoke_tests PRIVATE /W4 /permissive-)
+    target_compile_options(ofgui_ui_solver_tests PRIVATE /W4 /permissive-)
+    target_compile_options(ofgui_ui_workflow_tests PRIVATE /W4 /permissive-)
     target_compile_options(OpenFOAMGUI PRIVATE /W4 /permissive-)
 else()
     target_compile_options(ofgui_render PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(ofgui_ui PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(ofgui_render_domain_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(ofgui_ui_domain_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(ofgui_ui_field_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(ofgui_ui_smoke_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(ofgui_ui_solver_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(ofgui_ui_workflow_tests PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(OpenFOAMGUI PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 

@@ -1,96 +1,158 @@
 #include "ui/MainWindow.h"
 
 #include "render/VtkViewportWidget.h"
-#include "ui/ApplicationStyle.h"
-#include "ui/ConfigurationPanel.h"
 
-#include <QAction>
-#include <QApplication>
-#include <QKeySequence>
-#include <QMenu>
-#include <QMenuBar>
+#include "ui/ApplicationStyle.h"
+#include "ui/CaseDocumentController.h"
+#include "ui/ConfigurationPanel.h"
+#include "ui/ExportController.h"
+#include "ui/InspectorPanel.h"
+#include "ui/ProjectTreeView.h"
+#include "ui/ValidationPanel.h"
+
+#include <QCloseEvent>
+#include <QDir>
+#include <QFileInfo>
+#include <QLabel>
 #include <QMessageBox>
-#include <QSplitter>
 #include <QStatusBar>
-#include <QToolBar>
 
 namespace ofgui {
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
+    , m_document(new CaseDocumentController(this))
+    , m_exportController(new ExportController(m_document, this))
 {
     setObjectName(QStringLiteral("mainWindow"));
-    setWindowTitle(tr("OpenFOAM 可视化前处理"));
     resize(1440, 860);
     setMinimumSize(1100, 680);
     setStyleSheet(applicationStyleSheet());
 
     createCentralLayout();
+    createValidationDock();
+    createActions();
     createMenus();
     createToolBar();
+    createStatusBar();
+    connectDocument();
 
+    updateWindowTitle();
     statusBar()->showMessage(tr("就绪 | 独立 Qt/VTK 界面，不依赖 OpenFOAM 环境"));
 }
 
-void MainWindow::createMenus()
+MainWindow::~MainWindow() = default;
+
+CaseDocumentController* MainWindow::document() const noexcept
 {
-    auto* fileMenu = menuBar()->addMenu(tr("文件(&F)"));
-
-    auto* quitAction = new QAction(tr("退出(&X)"), this);
-    quitAction->setShortcut(QKeySequence::Quit);
-    connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
-    fileMenu->addAction(quitAction);
-
-    auto* viewMenu = menuBar()->addMenu(tr("视图(&V)"));
-
-    auto* fitAction = new QAction(tr("适配视图(&F)"), this);
-    fitAction->setShortcut(QKeySequence(Qt::Key_F));
-    connect(fitAction, &QAction::triggered, m_viewport, &VtkViewportWidget::fitView);
-    viewMenu->addAction(fitAction);
-
-    auto* resetAction = new QAction(tr("重置视角(&R)"), this);
-    resetAction->setShortcut(QKeySequence(Qt::Key_R));
-    connect(resetAction, &QAction::triggered, m_viewport, &VtkViewportWidget::resetView);
-    viewMenu->addAction(resetAction);
-
-    auto* helpMenu = menuBar()->addMenu(tr("帮助(&H)"));
-    auto* aboutAction = new QAction(tr("关于(&A)"), this);
-    connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
-    helpMenu->addAction(aboutAction);
+    return m_document;
 }
 
-void MainWindow::createToolBar()
+ConfigurationPanel* MainWindow::configurationPanel() const noexcept
 {
-    auto* toolbar = addToolBar(tr("主工具栏"));
-    toolbar->setObjectName(QStringLiteral("mainToolBar"));
-    toolbar->setMovable(false);
-
-    auto* fitAction = new QAction(tr("适配视图"), this);
-    fitAction->setToolTip(tr("将计算域完整适配到三维视口 (F)"));
-    connect(fitAction, &QAction::triggered, m_viewport, &VtkViewportWidget::fitView);
-    toolbar->addAction(fitAction);
-
-    auto* resetAction = new QAction(tr("重置视角"), this);
-    resetAction->setToolTip(tr("恢复默认等轴测视角 (R)"));
-    connect(resetAction, &QAction::triggered, m_viewport, &VtkViewportWidget::resetView);
-    toolbar->addAction(resetAction);
+    return m_configurationPanel;
 }
 
-void MainWindow::createCentralLayout()
+VtkViewportWidget* MainWindow::viewport() const noexcept
 {
-    m_configurationPanel = new ConfigurationPanel(this);
-    m_viewport = new VtkViewportWidget(this);
+    return m_viewport;
+}
 
-    auto* splitter = new QSplitter(Qt::Horizontal, this);
-    splitter->setObjectName(QStringLiteral("mainSplitter"));
-    splitter->setChildrenCollapsible(false);
-    splitter->addWidget(m_configurationPanel);
-    splitter->addWidget(m_viewport);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({360, 1080});
+ExportController* MainWindow::exportController() const noexcept
+{
+    return m_exportController;
+}
 
-    setCentralWidget(splitter);
+ValidationPanel* MainWindow::validationPanel() const noexcept
+{
+    return m_validationPanel;
+}
+
+void MainWindow::connectDocument()
+{
+    connect(m_document, &CaseDocumentController::documentStateChanged,
+            this, &MainWindow::updateWindowTitle);
+    connect(m_document, &CaseDocumentController::projectChanged,
+            this, &MainWindow::updateWindowTitle);
+    connect(m_document, &CaseDocumentController::projectChanged,
+            this, &MainWindow::syncDomainToViewport);
+    connect(m_document, &CaseDocumentController::validationChanged,
+            this, &MainWindow::updateValidationStatus);
+    connect(m_document, &CaseDocumentController::validationChanged,
+            this, &MainWindow::updateExportAvailability);
+    connect(m_document, &CaseDocumentController::projectChanged,
+            this, &MainWindow::updateExportAvailability);
+    connect(m_exportController, &ExportController::progressMessage, this,
+            [this](const QString& message)
+            { statusBar()->showMessage(message, 5000); });
+    connect(m_document, &CaseDocumentController::errorOccurred, this,
+            [this](const QString& message)
+            {
+                statusBar()->showMessage(message.simplified(), 8000);
+            });
+
+    syncDomainToViewport();
+    updateExportAvailability();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (!maybeSaveChanges())
+    {
+        event->ignore();
+        return;
+    }
+    event->accept();
+}
+
+void MainWindow::updateWindowTitle()
+{
+    const QString name = m_document->displayName();
+    setWindowTitle(tr("%1[*] — OpenFOAM 可视化前处理").arg(name));
+    setWindowModified(m_document->isDirty());
+}
+
+void MainWindow::updateValidationStatus()
+{
+    if (m_validationLabel == nullptr)
+    {
+        return;
+    }
+    m_validationLabel->setText(
+        tr("校验：%1").arg(QString::fromStdString(m_document->validation().summary())));
+}
+
+void MainWindow::syncDomainToViewport()
+{
+    m_viewport->setDocumentDomain(m_document->project().domain());
+}
+
+QString MainWindow::defaultDirectory() const
+{
+    const QString caseDirectory = m_document->caseDirectory();
+    if (!caseDirectory.isEmpty() && QFileInfo::exists(caseDirectory))
+    {
+        return caseDirectory;
+    }
+    if (!m_lastDirectory.isEmpty() && QFileInfo::exists(m_lastDirectory))
+    {
+        return m_lastDirectory;
+    }
+    const QString projectDirectory = QFileInfo(m_document->projectFilePath()).absolutePath();
+    if (!m_document->projectFilePath().isEmpty() && QFileInfo::exists(projectDirectory))
+    {
+        return projectDirectory;
+    }
+    return QDir::homePath();
+}
+
+void MainWindow::showError(const QString& message)
+{
+    if (message.trimmed().isEmpty())
+    {
+        return;
+    }
+    QMessageBox::warning(this, tr("操作失败"), message);
 }
 
 void MainWindow::showAboutDialog()

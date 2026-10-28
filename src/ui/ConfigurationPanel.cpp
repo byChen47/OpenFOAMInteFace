@@ -1,7 +1,7 @@
 #include "ui/ConfigurationPanel.h"
 
 #include "ui/InspectorPanel.h"
-#include "ui/ProjectTreeWidget.h"
+#include "ui/ProjectTreeView.h"
 
 #include <QLabel>
 #include <QSplitter>
@@ -27,21 +27,37 @@ ConfigurationPanel::ConfigurationPanel(QWidget* parent)
     auto* splitter = new QSplitter(Qt::Vertical, this);
     splitter->setChildrenCollapsible(false);
 
-    m_tree = new ProjectTreeWidget(splitter);
+    m_tree = new ProjectTreeView(splitter);
     m_inspector = new InspectorPanel(splitter);
 
     splitter->addWidget(m_tree);
     splitter->addWidget(m_inspector);
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 2);
-    splitter->setSizes({520, 300});
+    splitter->setStretchFactor(0, 2);
+    splitter->setStretchFactor(1, 3);
+    splitter->setSizes({320, 520});
 
     layout->addWidget(splitter, 1);
 
-    connect(m_tree, &ProjectTreeWidget::nodeSelected,
-        m_inspector, &InspectorPanel::showNode);
+    connect(m_tree, &ProjectTreeView::nodeSelected,
+            m_inspector, &InspectorPanel::showNode);
+    connect(m_inspector, &InspectorPanel::selectionRequested,
+            m_tree, &ProjectTreeView::selectNode);
+}
 
-    m_tree->selectFirstNode();
+void ConfigurationPanel::setDocument(CaseDocumentController* document)
+{
+    m_tree->setDocument(document);
+    m_inspector->setDocument(document);
+}
+
+ProjectTreeView* ConfigurationPanel::treeView() const noexcept
+{
+    return m_tree;
+}
+
+InspectorPanel* ConfigurationPanel::inspector() const noexcept
+{
+    return m_inspector;
 }
 
 } // namespace ofgui

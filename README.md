@@ -62,4 +62,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\scripts\Publish-ToGit
 
 完整的 PATH、手动 CMake 命令、DLL 收集和故障排查见 [构建与部署说明](docs/BUILD_AND_DEPLOY.md)。
 
+## 使用说明（当前可用流程）
+
+1. 启动 `OpenFOAMGUI.exe`：默认加载内置 cavity 模板（2D、20×20×1、icoFoam），无需手工补值即可直接导出。
+2. **打开算例**（`Ctrl+O`）选择 v2206 算例根目录（例如 `OpenFOAM-v2206/tutorials/incompressible/icoFoam/cavity/cavity`），左侧工程树显示计算域、网格、边界（六面）、`0/` 场与求解设置。
+3. 在工程树选择节点后在下方/右侧编辑：计算域与网格（min/max、cells、2D/3D）、场（internalField、逐 patch BC）、求解设置（application、时间控制、transportModel/nu）。非法值会就地提示且不写入模型。
+4. 底部“校验问题”面板按级别列出问题；双击问题可跳到对应节点。存在错误或阻断问题时导出动作不可用。
+5. **导出算例**（`Ctrl+E`）：选择目标目录，预览文件清单与生成文本，确认后写入。目标目录已有内容时需勾选覆盖并二次确认，旧目录会备份为 `<目标>.bak-<时间戳>`；导出失败不会留下半成品目录。
+6. 工程本身可保存为 `.ofgproj`（`Ctrl+S` / `Ctrl+Shift+S`），与导出的 OpenFOAM 算例相互独立。
+
+导出结果包含 `0/<field>`、`system/blockMeshDict`、`system/controlDict`、`system/fvSchemes`、`system/fvSolution`、`constant/transportProperties`，以及镜像/复制自源算例的其余文件；目标目录内的 `.ofgport-export.json` 记录每个文件的动作与大小。
+
 以后只需对 Agent 说 **“提交到github”**，即可自动执行归档、提交和推送。详细规则见 [Git 分支与更新流程](docs/GIT_WORKFLOW.md)。

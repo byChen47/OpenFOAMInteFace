@@ -1,5 +1,6 @@
 #include "render/VtkViewportWidget.h"
 
+#include "render/DomainBoundsAdapter.h"
 #include "render/DomainSceneBuilder.h"
 
 #include <QShowEvent>
@@ -24,11 +25,11 @@ VtkViewportWidget::VtkViewportWidget(QWidget* parent)
     m_renderer->GradientBackgroundOn();
     m_renderWindow->AddRenderer(m_renderer);
 
-    buildScene();
+    rebuildScene(m_domain);
     m_orientationMarker.attach(interactor());
 }
 
-void VtkViewportWidget::buildScene()
+void VtkViewportWidget::rebuildScene(const PreviewDomain& domain)
 {
     for (const auto& face : m_scene.faces)
     {
@@ -43,7 +44,7 @@ void VtkViewportWidget::buildScene()
         m_renderer->RemoveActor(m_scene.outline);
     }
 
-    m_scene = DomainSceneBuilder{}.build(makeDefaultPreviewDomain());
+    m_scene = DomainSceneBuilder{}.build(domain);
 
     for (const auto& face : m_scene.faces)
     {
@@ -53,16 +54,78 @@ void VtkViewportWidget::buildScene()
     m_renderer->AddActor(m_scene.outline);
 }
 
+void VtkViewportWidget::setDocumentDomain(const core::DomainBox& domain)
+{
+    const std::optional<PreviewDomain> preview = DomainBoundsAdapter::previewDomain(domain);
+    if (!preview.has_value())
+    {
+        resetDocumentDomain();
+        return;
+    }
+
+    if (DomainBoundsAdapter::sameBounds(m_domain, *preview))
+    {
+        // Geometry did not change (e.g. only the cell counts were edited):
+        // keep the actors and the camera exactly as they are.
+        m_hasDocumentDomain = true;
+        return;
+    }
+
+    m_domain = *preview;
+    m_hasDocumentDomain = true;
+    rebuildScene(m_domain);
+    ++m_sceneRevision;
+    renderIfVisible();
+}
+
+void VtkViewportWidget::resetDocumentDomain()
+{
+    const PreviewDomain preview = makeDefaultPreviewDomain();
+    m_hasDocumentDomain = false;
+    if (DomainBoundsAdapter::sameBounds(m_domain, preview))
+    {
+        return;
+    }
+
+    m_domain = preview;
+    rebuildScene(m_domain);
+    ++m_sceneRevision;
+    renderIfVisible();
+}
+
+std::array<double, 6> VtkViewportWidget::sceneBounds() const
+{
+    return m_domain.bounds();
+}
+
+int VtkViewportWidget::sceneRevision() const noexcept
+{
+    return m_sceneRevision;
+}
+
+bool VtkViewportWidget::hasDocumentDomain() const noexcept
+{
+    return m_hasDocumentDomain;
+}
+
+void VtkViewportWidget::renderIfVisible()
+{
+    if (isVisible())
+    {
+        m_renderWindow->Render();
+    }
+}
+
 void VtkViewportWidget::fitView()
 {
     m_cameraController.fit(m_renderer);
-    m_renderWindow->Render();
+    renderIfVisible();
 }
 
 void VtkViewportWidget::resetView()
 {
     m_cameraController.reset(m_renderer);
-    m_renderWindow->Render();
+    renderIfVisible();
 }
 
 void VtkViewportWidget::showEvent(QShowEvent* event)
@@ -72,7 +135,14 @@ void VtkViewportWidget::showEvent(QShowEvent* event)
     if (!m_initialViewApplied)
     {
         m_initialViewApplied = true;
-        resetView();
+        if (m_hasDocumentDomain)
+        {
+            fitView();
+        }
+        else
+        {
+            resetView();
+        }
     }
 }
 

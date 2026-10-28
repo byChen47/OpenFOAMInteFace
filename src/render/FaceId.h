@@ -1,32 +1,24 @@
 #pragma once
 
-#include <array>
-#include <cstddef>
+// Compatibility header.
+//
+// `FaceId` is a core domain type now: the single definition lives in
+// `src/core/FaceId.h` (`ofgui::core::FaceId`) because `BoundaryPatch` owns face
+// assignments and `render` must not be the business data source.
+//
+// This header only re-exports the core type into the historical `ofgui`
+// namespace so existing render/ui code keeps compiling. New code should
+// `#include "core/FaceId.h"` and use `core::FaceId` directly.
+
+#include "core/FaceId.h"
 
 namespace ofgui {
 
-enum class FaceId : int
-{
-    XMin = 0,
-    XMax = 1,
-    YMin = 2,
-    YMax = 3,
-    ZMin = 4,
-    ZMax = 5
-};
-
-inline constexpr std::array<FaceId, 6> kAllFaceIds{
-    FaceId::XMin,
-    FaceId::XMax,
-    FaceId::YMin,
-    FaceId::YMax,
-    FaceId::ZMin,
-    FaceId::ZMax
-};
-
-inline constexpr std::size_t faceIndex(FaceId faceId) noexcept
-{
-    return static_cast<std::size_t>(faceId);
-}
+using core::faceAxis;
+using core::faceIndex;
+using core::faceIsMax;
+using core::faceName;
+using core::FaceId;
+using core::kAllFaceIds;
 
 } // namespace ofgui

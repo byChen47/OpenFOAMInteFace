@@ -52,6 +52,47 @@
 
 依赖方向只能自上而下，禁止反向依赖。
 
+### 2.1 目录结构与构建目标
+
+`src/core` 与 `src/io` 各自在自己的 `src/<module>/CMakeLists.txt` 里声明源文件、警告选项和测试登记，根 `CMakeLists.txt` 用 `add_subdirectory()` 引入这两个模块；`ofgui_render`、`ofgui_ui`、`OpenFOAMGUI` 以及 `tests/render`、`tests/ui` 的测试目标仍直接登记在根 `CMakeLists.txt`。新增 core/io 文件只改所属模块的 `CMakeLists.txt`；新增 render/ui/app 文件改根文件。
+
+```text
+src/
+├── core/                       # ofgui_core：纯 C++20 标准库领域模型
+│   ├── CMakeLists.txt
+│   ├── Basics.h                # Real / Index / kRealTolerance
+│   ├── Vec3d.h                 # 三维值类型（仅头文件）
+│   ├── Version.h / .cpp        # 模块骨架锚点（模块名 + 语义版本）
+│   └── …                       # CaseProject、DomainBox、CaseValidator 等
+├── io/                         # ofgui_io：字典解析/写出与工程持久化
+│   ├── CMakeLists.txt
+│   ├── Version.h / .cpp        # 模块骨架锚点（复用 core 的版本格式化）
+│   └── …                       # FoamLexer、FoamParser、writers、exporter 等
+├── app/
+├── render/
+└── ui/
+tests/
+├── core/                       # 由 src/core/CMakeLists.txt 登记
+├── io/                         # 由 src/io/CMakeLists.txt 登记
+├── render/                     # 由根 CMakeLists.txt 登记
+└── ui/                         # 由根 CMakeLists.txt 登记
+```
+
+| 目标 | 类型 | 直接依赖 | 禁止依赖 |
+| --- | --- | --- | --- |
+| `ofgui_core` | STATIC | C++20 标准库 | Qt（含 `Qt6::Core`）、VTK |
+| `ofgui_io` | STATIC | `ofgui_core`、`Qt6::Core` | Qt Widgets、Qt GUI、VTK |
+| `ofgui_render` | STATIC | `ofgui_core`、`Qt6::Widgets`、VTK | `ofgui_io`、`ofgui_ui` |
+| `ofgui_ui` | STATIC | `ofgui_render`、`ofgui_io`、`Qt6::Widgets` | 直接写 OpenFOAM 文件 |
+| `OpenFOAMGUI` | 可执行 | `ofgui_ui` | — |
+
+模块边界规则：
+
+1. `ofgui_core` 的编译/归档命令中不得出现 Qt 或 VTK 的 include、define 和库（对应 `docs/CASE_IMPORT_SPEC.md` §10.7 与评审清单第 8 项）。
+2. `core`/`io` 头文件不得 `#include <QWidget>` 等 UI 类型；`io` 只允许 `Qt6::Core`（`QJson*`、`QFile` 等）。
+3. 每个测试文件一个可执行目标，测试源码放 `tests/<module>/`，在每个测试实际所属的 `CMakeLists.txt`（core/io 在模块内，render/ui 在根文件）里 `add_test`，命名 `ofgui_<module>_<subject>_tests`。
+4. 源文件列表必须显式登记，禁止 `file(GLOB …)`。
+
 ---
 
 ## 3. 模块职责
@@ -284,6 +325,46 @@ CaseProject
 
 `CaseProject` 是导出和渲染的业务根对象。
 
+### 4.7 模型实现（t3 已落地）
+
+`src/core` 已按“一个类一个文件”落地首版模型，全部位于 `namespace ofgui::core`，不链接 Qt Widgets/VTK：
+
+| 文件 | 内容 |
+| --- | --- |
+| `src/core/Basics.h` | `Real`（double）、`Index`、`kRealTolerance` |
+| `src/core/Vec3d.h` | 值语义三维向量（分量、点积、长度、归一化、近似比较、分量极值） |
+| `src/core/FaceId.h` | `FaceId` 六面枚举、`kAllFaceIds`、`faceIndex/faceAxis/faceIsMax/faceName` |
+| `src/core/ObjectId.h/.cpp` | 稳定对象 ID（16 位十六进制字符串，可往返解析） |
+| `src/core/DomainBox.h/.cpp` | 计算域（min/max/mode/unit，尺寸、体积、2D 建议） |
+| `src/core/MeshSettings.h/.cpp` | 网格（cells[3]、grading[3]、scale，总单元数与预算） |
+| `src/core/BoundaryPatch.h/.cpp` | patch（稳定 id、可改显示名、类型、面集合、颜色、可见性） |
+| `src/core/FieldValue.h/.cpp` | `internalField` 取值（均匀标量/均匀向量/非均匀原文） |
+| `src/core/BoundaryCondition.h/.cpp` | 边界条件（类型原文 + 参数表，附常用类型白名单） |
+| `src/core/FieldDefinition.h/.cpp` | 场（名称、类别、dimensions[7]、internalField、按 patchId 的 BC 表） |
+| `src/core/SolverSettings.h/.cpp` | 求解设置（application、时间控制；`fvSchemes/fvSolution` 另行扩展） |
+| `src/core/SourceLocation.h/.cpp` | 文件/行/列定位 |
+| `src/core/ValidationIssue.h/.cpp` | 校验问题（Severity、稳定代码、目标对象、建议修复、定位、nodePath、snippet、origin） |
+| `src/core/ValidationResult.h/.cpp` | 问题集合（按级别过滤、首个阻断项、摘要） |
+| `src/core/FaceAssignmentValidator.h/.cpp` | 六面归属覆盖统计（未归属/多归属/完整覆盖） |
+| `src/core/CaseProject.h/.cpp` | 工程根对象（域、网格、patch 列表、场列表、求解设置、导入来源 `source`） |
+| `src/core/CaseSourceInfo.h/.cpp` | 导入来源（源相对路径、`startDirectory`、`importedAt`、逐文件 SHA-256 与 hex 转换） |
+| `src/core/CaseValidator.h/.cpp` | 全部模型不变量的唯一校验入口（`validate()` 编排；各规则族见下） |
+| `src/core/CaseValidatorDomain.cpp` | `CASE-DOM-*` 计算域几何规则 |
+| `src/core/CaseValidatorMesh.cpp` | `CASE-MESH-*` 网格数/渐变/scale/2D 厚度规则 |
+| `src/core/CaseValidatorPatches.cpp` | `CASE-PATCH-*` 命名、六面归属与 2D empty 规则 |
+| `src/core/CaseValidatorFields.cpp` | `CASE-FIELD-*` 场名、internalField 与 BC 完整性规则 |
+| `src/core/CaseValidatorSolver.cpp` | `CASE-SOLV-*` 时间控制与 application 规则 |
+| `src/core/CaseValidatorMessages.h` | 上述五个实现文件共享的消息与格式化辅助（`ofgui::core::detail`，模块内部；不含校验逻辑） |
+| `src/core/ProjectSchemaVersion.h` | 工程 schema 版本与扩展名 |
+| `src/core/Version.h/.cpp` | 模块版本（构建边界自检） |
+
+实现约定：
+
+- **FaceId 唯一定义在 `core`**（`docs/DECISIONS.md` D-026）：`src/render/FaceId.h` 只保留 `namespace ofgui` 的 `using` 别名，render/ui 既有代码无需改动。
+- **setter 不拒绝非法值**（D-027）：编辑器需要能暂存“正在输入”的中间状态；合法性统一由 `CaseValidator` 判断并给出可定位问题。
+- **问题代码稳定**（D-028）：`CASE-DOM-*`（域）、`CASE-MESH-*`（网格）、`CASE-PATCH-*`（面归属/命名/2D 空隙边界）、`CASE-FIELD-*`（场与 BC）、`CASE-SOLV-*`（时间控制）；只有 `BlockingError` 阻断导出。
+- Python/JSON 侧与 GUI 侧对上述字段使用同名 key，见 `docs/CASE_IMPORT_SPEC.md` §6。
+
 ---
 
 ## 5. 文档与状态流
@@ -331,6 +412,83 @@ Closing
 ```
 
 `DocumentController` 统一维护 dirty 状态。用户保存成功后清除 dirty，导出失败不应错误清除 dirty。
+
+### 5.3 工程树与选中（t8）
+
+左侧配置区由一个 `ProjectTreeView`（`QTreeView` + `ProjectTreeModel`）承载，层级固定为：
+
+```text
+工程 · <显示名> *
+├── 计算域
+├── 网格
+├── 边界（六面）
+│   ├── xMin → inlet (patch)
+│   ├── …（共 6 个面，未归属时显示“未分配”）
+├── 场（0/）
+│   ├── p [volScalarField]
+│   │   ├── movingWall — zeroGradient
+│   │   └── …（该场在每个 patch 上的 BC）
+│   └── U [volVectorField]
+├── 求解器设置
+└── 导出预览
+```
+
+- 树节点身份是 `ProjectNodeRef`：`NodeKind` + 可选 `FaceId` + 可选 `fieldId` + 可选 `patchId`，由 `ProjectTreeModel::NodeRefRole` 保存；界面显示文本只用于展示，禁止反向解析文本得到身份。
+- 选中通过 `ProjectTreeView::nodeSelected(ProjectNodeRef)` 传播：`ConfigurationPanel` 将其转给 `InspectorPanel::showNode()`（按 ID 从 `CaseProject` 取值）。VTK 面高亮 API 尚未实现，选中目前只联动 Inspector（见 Backlog M3-04）。
+- 选择“面”节点时，Inspector 通过 `CaseProject::findPatchForFace()` 解析所属 patch，并列出该 patch 上所有场的 BC；选择“场 → patch”节点时显示单个 BC 的类型与参数。
+- `ProjectTreeModel` 在 `CaseDocumentController` 的 `projectChanged` / `documentStateChanged` / `importReportChanged` 上重建，重建前后用 `modelAboutToBeReset` / `modelReset` 保存并恢复选中（按 ID，不按行号）。
+- 打开算例与打开工程都走 `CaseDocumentController`：前者调用 `io::CaseImporter::import()` 生成 `CaseProject` 并把导入报告保存在 document 上，后者调用 `io::ProjectJsonRepository::load()`；两条路径最终都发出同一组信号，树和 Inspector 不区分来源。
+- 新建、打开、关闭前的 dirty 保护由 `MainWindow::maybeSaveChanges()` 统一处理（保存 / 放弃 / 取消），窗口标题用 `[*]` 占位并在保存后清除。
+
+### 5.4 计算域编辑器与场景同步（t9）
+
+`InspectorPanel` 内部是一个 `QStackedWidget`：选中“计算域”或“网格”时切到可编辑的 `DomainEditor`；选中场或“场 → patch”时切到可编辑的 `FieldEditor`；选中“求解器设置”时切到 `SolverEditor`；其他节点切到 `NodeDetailFormatter` 生成的只读 HTML 页。
+
+- `DomainEditor` 只通过 `CaseDocumentController` 写模型。每次提交先由 `readCandidate()` 从控件读出 `DomainBox` + `MeshSettings`，在 UI 侧检查硬不变量：每轴 `max > min`、三个方向 `cells > 0`、二维模式 `z = 1`。任一条不满足就只更新红色错误行并返回，`CaseProject` 与 VTK 场景保持上一次合法状态（非法值不进入模型，也不会被静默夹取）。
+- 通过检查后调用 `setDomain()` + `setMesh()` + `notifyProjectEdited()`；document 依次发出 `validationChanged` → `projectChanged` → `documentStateChanged`，工程树、Inspector、主窗口状态栏都从这条信号链刷新，编辑器自身用 `m_updating` 防止回写触发递归。
+- 二维/三维：切到二维时先把 z 网格数强制为 1 再提交；三维模式下 z = 1 只给灰色提示（“如果算例实为二维，请切换为二维模式”），不阻断。
+- 场景侧：`MainWindow` 监听 `projectChanged` 调 `VtkViewportWidget::setDocumentDomain(domain)`。`render::DomainBoundsAdapter` 把 `DomainBox` 转成 `PreviewDomain`（非有限或非正尺寸返回 `nullopt`），`sameBounds()` 以 `core::kRealTolerance` 的相对容差比较；bounds 未变（例如只改网格数）时保留 actor 与相机，不重建。
+- 新建工程默认域为原点处的 1 m 单位立方体，保证首次选中“计算域”就有可画、可编辑的状态；打开算例/工程、新建、关闭后主窗口都会调用 `fitView()`，该调用只改相机，不写模型。
+- 已知边界：`DomainBox::unit()` 暂不在编辑器中修改（核心模型已支持，UI 排入 Backlog）；patch 面高亮仍是 M3-04。
+
+### 5.5 场与边界条件编辑器（t10）
+
+选中“场（0/）→ 某场”或“某场 → 某 patch”时，Inspector 显示 `FieldEditor`；`FieldBoundaryTable` 是该编辑器内按 patch 逐行编辑 BC 的表格，`UniformValueEditor` 负责 `uniform <scalar>` / `uniform (x y z)` 的输入。
+
+- 身份仍是稳定 ID：`FieldEditor::showField(fieldId)`、`FieldBoundaryTable::patchId` 都取自 `core::ObjectId`；表格行的 patch 通过 `QComboBox` 的 `userData` 携带 patchId，不解析显示文本。
+- 可编辑范围与 D-024 对齐：`scalarTypeNames()` / `vectorTypeNames()` 是白名单；导入的类型不在白名单时只读展示原文（灰色提示“只读保存”），用户不能把它改成别的类型但保存时原文不变。
+- 写模型只有一条路径：控件信号 → 校验 → `CaseProject::setInternalField()` / `setBoundaryCondition()` → `CaseDocumentController::notifyProjectEdited()`。校验失败只显示红色错误行，模型和预览保持上一次合法状态。
+- `internalField`：标量/向量都用 `UniformValueEditor`；`nonuniform` 列表、`$internalField` 等非 uniform 原文以只读 `QLineEdit` 展示，保存时逐字保留。`dimensions` 首版只读（7 个指数完整显示），避免误改物理量纲。
+- 预览：`FieldEditor::updatePreview()` 直接调用 `io::FieldFileWriter::write(field, project)`，因此预览与导出共享同一 writer；`ExportPreviewPanel` 用同一 writer 列出 0/ 下所有场文件。
+- 新增/删除场：`FieldEditor::addPredefinedField("p"/"U")` 走 `CaseProject::addField()` 并按 patch 建立默认 BC（p → zeroGradient，U → noSlip），删除只允许首版模板内的 p/U，避免误删求解必需场；两类操作都先写模型再 `notifyProjectEdited()`。
+- 表格列宽固定为 patch / 类型 / 值，类型列宽 124 px 以完整显示 `zeroGradient`、`fixedValue` 等；表格放在 `QScrollArea` 中，窄面板下整体纵向滚动而不是横向截断。
+- 导入的 cavity：p 的 dimensions `[0 2 -2 0 0 0 0]`、internalField `uniform 0`；U 的 `[0 1 -1 0 0 0 0]`、`uniform (0 0 0)`，movingWall 的 U 为 `fixedValue` + `uniform (1 0 0)`，与 `0/p`、`0/U` 原文一致。
+
+### 5.6 求解设置编辑器（t11）
+
+选中“求解器设置”时 Inspector 显示 `SolverEditor`，用四个页签分开“能改的模型值”“只读的导入原文”“导出预览”：`controlDict`、`constant`、`只读原文`、`导出预览`。
+
+- 可编辑面严格等于领域模型已有的字段（D-037）：`application`、`startTime`、`endTime`、`deltaT`、`writeInterval` 写 `core::SolverSettings`；`transportModel`、`nu` 写 `CaseDocumentController::transportSettings()`（`io::TransportModelSettings`，也就是 exporter 消费的同一对象）。没有模型支撑的键（`startFrom`、`stopAt`、`writeControl`、`fvSchemes`、`fvSolution`、`simulationType`）不提供可编辑控件，避免“改了界面但导出没变”。
+- `startFrom`/`stopAt`/`writeControl` 的导入值从 `readOnlySettings()` 按路径精确读取（`system/controlDict.startFrom`），以只读说明文字显示；同时说明导出固定写 `startTime`/`endTime`/`timeStep`。
+- `nu` 只在纯数值写法下可编辑；带量纲（`nu [0 2 -1 0 0 0 0] 1e-05`）或表达式时 `isKinematicViscosityEditable()` 为 false，控件置灰并显示原值，保存时逐字回写。`transportModel` 仅在为空或 `Newtonian` 时可改（首版 writer 只支持这两个取值），其他模型只读展示。
+- 持久化边界（t23 / F-05，策略 B）：`transportModel`/`nu` 目前只存在于会话内的 `io::TransportModelSettings` 与源算例投影，**不写入 `.ofgproj`**（schema 仍为 v2）。因此 `constant` 页在控件下方固定提示“transportModel/nu 不随 .ofgproj 保存；重新打开工程时会按源算例的 constant/transportProperties 重读”，保存与重开工程的状态栏消息也会重复该说明，避免用户误以为编辑丢失是 bug。要真正持久化需要 schema v3（core/io 侧任务），本轮不做。
+- `simulationType` 只读：`turbulenceProperties` 只有 `laminar` 会被 writer 写出，其他值在 UI 中明确标注“导出保持导入值”。
+- 写路径：控件信号 → `readCandidate()` 式校验（`endTime > startTime`、`deltaT > 0`、`writeInterval ≥ 1`）→ `CaseProject`/`transportSettings` → `notifyProjectEdited()` / `notifyTransportEdited()`。`m_updating` 防止刷新回写递归；dirty 标记、工程树标题与状态栏都由 document 信号链刷新。
+- `只读原文` 页签列出 `CaseDocumentController::availableSourceDictionaries()`（`system/controlDict`、`fvSchemes`、`fvSolution`、`constant/transportProperties` 等），文本来自导入时缓存的逐字节原文 `sourceDictionaryText()`，不重新解析。
+- `导出预览` 页签直接调用 `io::ControlDictWriter::write(project)` 与 `io::TransportPropertiesWriter::write(transportSettings)`；预览文本与导出文件同源，测试逐字比较。
+
+### 5.7 校验、导出与默认算例（t12）
+
+导出是唯一写 OpenFOAM 文件的入口，链路固定为“模型校验 → 计划生成 → 计划字典校验 → 原子写盘 → 回读 manifest”：
+
+- `ExportController::preview(target)`：把 `document.validation()` 的问题与 `io::ExportPlanBuilder::build()` 的问题合并，再用 `ExportDictionaryCheck` 重新解析计划中每个生成文件。存在 `Error`/`BlockingError` 或计划为空时 `ok = false`，`errorText` 逐条列出问题；对话框据此禁用“导出”按钮并显示红色说明，因此阻断问题在按下导出之前就可见。
+- `ExportController::exportTo(target, allowExistingTarget)`：空目标、目标位于源算例目录内、模型含错误/阻断问题、预览失败都在写盘前返回中文原因；随后调用 `io::CaseExporter::exportProject()`。该函数内部再执行一次 `CaseValidator` 并写入同级临时目录后重命名，失败时不产生目标目录（测试断言无 `.tmp-*` 残留）。
+- D-037 接线点：`makeOptions()` 把 `document.transportSettings()` 原样填入 `io::CaseExportOptions.transport`，并把 `sourceDictionaryText("system/fvSchemes")`、`sourceDictionaryText("system/fvSolution")` 填入 `fvSchemesText`/`fvSolutionText`。求解页的 transportModel/nu 编辑与导入的 schemes 原文由此真正进入导出文件（测试断言 `nu 0.02` 出现在导出的 `constant/transportProperties`）。
+- 成功回读 `<target>/.ofgport-export.json`，用 written/copied/mirrored/skipped 计数与文件数组装状态栏与结果对话框文本；覆盖已有目录时 `AtomicCaseDirectory` 生成 `<target>.bak-<stamp>` 备份。
+- `ExportPreviewDialog` 只展示不写盘：文件树（文件/动作/大小）、动作中文名（新写/复制/镜像/跳过）、生成文件原文预览、计划统计；目标目录已有内容时必须勾选“覆盖”并在确认框二次确认，`allowExistingTarget()` 才为真。
+- `ValidationPanel` 作为主窗口底部 dock（`validationDock`）常驻：按级别着色列出问题，双击通过 `ValidationNavigator::nodeRefForIssue()` 把 `targetField`/对象 ID 映射为 `ProjectNodeRef` 后选中树节点；主窗口在有 `Error`/`BlockingError` 时禁用导出动作并在 tooltip 说明原因。
+- 首次启动与“新建工程”使用 `DefaultCaseTemplate` 的 cavity 模型（2D、20×20×1、icoFoam 0→0.5、p/U 与三个 patch 的 BC 齐备、nu 0.01），因此“新建 → 导出”无需任何手工补值即可得到可运行的 v2206 算例；避免“界面能开但导出必失败”的假可用状态。
+- 打开已有算例后 `importReport` 仍只在工程页展示，导出永远以模型为源；未建模的键（`fvSchemes`/`fvSolution` 等）通过镜像源文件或原文透传保留，不假装可编辑。
 
 ---
 
@@ -385,7 +543,7 @@ Closing
 - patch 可见性变化：切换 actor visibility。
 - 选择变化：切换高亮，不重建所有 actor。
 
-首版允许全量重建，但接口应允许增量更新。
+首版允许全量重建，但接口应允许增量更新。t9 的落地方式：`VtkViewportWidget::setDocumentDomain()` 先用 `render::DomainBoundsAdapter` 得到 `PreviewDomain`，`sameBounds()` 判定 bounds 未变时直接返回（不重建 actor、不重置相机）；变化时 `rebuildScene()` 重新生成六个面 + outline，并递增 `sceneRevision()` 供测试断言。
 
 ### 6.5 相机
 
@@ -426,6 +584,12 @@ case/
     ├── fvSchemes
     └── fvSolution
 ```
+
+**导入场景例外（D-018）**：上述 `0.orig/` 是**新建工程**的固定输出。当工程来自“导入已有算例”时，起始时间目录名**继承源目录**：源用 `0/` 就输出 `0/`，源用 `0.orig/` 就输出 `0.orig/`。
+
+- 原因：v2206 教程的 `Allrun` 普遍假定 `0.orig` 存在并 `cp -r 0.orig 0`；把源 `0/` 强行改名为 `0.orig/`（或反向改名）都会破坏用户既有工作流。
+- 实现：`CaseProject.startDirectory`（`0` | `0.orig`）为模型字段，导出器与 `ExportPreviewDialog` 只读该字段决定输出子目录名；新建工程时该字段固定为 `0.orig`。
+- 文件集合（`p`、`U`、`constant/transportProperties`、`system/*`）与现有 §7.1 原则不变；导入场景下未接管文件按镜像策略保留，见 `docs/DECISIONS.md` D-023。
 
 ### 7.3 生成接口示例
 
@@ -551,6 +715,7 @@ UI 根据 `targetObjectId` 定位到树节点和属性面板，不让用户只�
 - actor 颜色和可见性。
 - 选择状态变更。
 - 相机 fit 不崩溃。
+- `ofgui_render_domain_tests`（t9）：`DomainBoundsAdapter` 的 `DomainBox → PreviewDomain` 转换、非法盒拒绝、容差比较，以及从 `DomainBox` 构建六面场景。
 
 ### 10.4 UI 测试
 
@@ -560,6 +725,10 @@ UI 根据 `targetObjectId` 定位到树节点和属性面板，不让用户只�
 - 树节点选中联动。
 - 导出预览对话框内容。
 - 关闭未保存工程时出现提示。
+- `ofgui_ui_domain_tests`（t9）：选中计算域切到编辑页；改 max/min 后 `CaseProject` 与 `VtkViewportWidget::sceneBounds()` 同步、`sceneRevision()` +1；max ≤ min / cells = 0 被拒绝且场景不重建；只改网格数不重建；2D 强制 z=1 且错误为空；cavity 导入后六个坐标与 20/20/1 回填。
+- `ofgui_ui_field_tests`（t10）：cavity 导入后 p/U 的 dimensions、internalField 与逐 patch BC 回填；改 internalField/边界类型/值后模型、脏标记与 0/ 预览同步；类型白名单外的导入 BC 只读；非法值被拒绝且模型不变；新增/删除 p、U 的模板行为；`ExportPreviewPanel` 文本与 `io::FieldFileWriter` 一致；Inspector 对 Field/FieldBoundary 的路由。
+- `ofgui_ui_solver_tests`（t11）：cavity 导入后 application/startTime/endTime/deltaT/writeInterval 回填（`0`/`0.5`/`0.005`/`20`）；改 endTime/writeInterval/application 后模型、脏标记与 controlDict 预览同步；改 nu 后 `transportSettings` 与 transportProperties 预览同步；两个预览页签与 writer 输出逐字相等；只读原文页签列出导入字典且文本含 `application`/`divSchemes`；新建工程显示默认求解设置；Inspector 对 Solver 节点的路由。
+- `ofgui_ui_workflow_tests`（t12）：新建工程即 cavity 模板且可直接导出；导出计划含 `0/p`、`0/U`、`system/blockMeshDict`、`system/controlDict`、`system/fvSchemes`、`system/fvSolution`、`constant/transportProperties` 且非空；导出成功后 `.ofgport-export.json` 的计数与结果一致；transport 编辑（nu = 0.02）出现在导出的 `constant/transportProperties`；阻断问题阻止导出且目标目录不存在、不留 `.tmp-*` 残留；已存在目标需显式覆盖、覆盖时生成 `.bak-<stamp>` 备份且旧文件不丢；`EXPORT-DICT-001` 捕获损坏的字典文本；校验面板双击问题定位到对应树节点；存在阻断问题时主窗口导出动作禁用；预览对话框在阻断态禁用“导出”并显示 `导出预检失败：…CASE-MESH-001…`；对话框销毁（含目标行仍持有焦点）不再触发悬空信号回调。
 
 ---
 
